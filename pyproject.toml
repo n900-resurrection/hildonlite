@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hildonlite"
+version = "0.1.0"
+description = "Thin ctypes layer over GTK 2 and Hildon (Maemo 5, Nokia N900) for Python 3: no PyGTK, no PyGObject"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.8"
+authors = [{ name = "elPytel" }]
+keywords = ["maemo", "n900", "hildon", "gtk2", "ctypes"]
+classifiers = [
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Software Development :: User Interfaces",
+    "Programming Language :: Python :: 3",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/n900-resurrection/hildonlite"
+
+[tool.setuptools]
+packages = ["hildonlite"]
