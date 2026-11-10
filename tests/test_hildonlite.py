@@ -55,6 +55,12 @@ class Widgets(unittest.TestCase):
         hl._fn("gtk", "gtk_button_clicked", None, ctypes.c_void_p)(b.ptr)
         self.assertEqual(n, [b])                      # the handler gets the same Python object back
 
+    def test_image_button_with_missing_file_falls_back_to_a_label(self):
+        n = []
+        b = hl.ImageButton("/nonexistent/x.png", on_clicked=lambda w: n.append(1), width=64, label="x")
+        hl._fn("gtk", "gtk_button_clicked", None, ctypes.c_void_p)(b.ptr)
+        self.assertEqual(n, [1])
+
     def test_handler_exception_does_not_kill_the_loop(self):
         b = hl.Button("Boom", on_clicked=lambda w: 1 / 0)
         hl._fn("gtk", "gtk_button_clicked", None, ctypes.c_void_p)(b.ptr)   # printed to stderr, no crash
@@ -67,6 +73,15 @@ class Widgets(unittest.TestCase):
 
 
 class Containers(unittest.TestCase):
+    def test_drawing_area_has_an_x_window(self):
+        w = hl.Window("t", quit_on_close=False)
+        d = hl.DrawingArea(100, 80)
+        w.add(d)
+        w.show()
+        pump(50)
+        self.assertGreater(d.xid(), 0)
+        w.destroy()
+
     def test_window_with_box_shows(self):
         w = hl.Window("t", quit_on_close=False)
         box = hl.VBox(spacing=4)
@@ -137,6 +152,12 @@ class Dialogs(unittest.TestCase):
 
 
 class Timers(unittest.TestCase):
+    def test_flush_runs_pending_idle_handlers(self):
+        n = []
+        hl.idle(lambda: (n.append(1), False)[1])
+        hl.flush()
+        self.assertEqual(n, [1])
+
     def test_timeout_repeats_until_false(self):
         n = []
         hl.timeout(20, lambda: (n.append(1), len(n) < 3)[1])

@@ -23,13 +23,15 @@ hl.main()
 |---|---|
 | `Window` | `HildonStackableWindow`, `set_title`, `set_menu(AppMenu)` |
 | `Box`, `VBox`, `HBox` | `add(widget, expand=, fill=, padding=)` |
+| `ImageButton` | finger-sized button with a PNG instead of text, `width=` makes it narrow |
 | `Label`, `Button` | `HildonButton` with title and value (`size=THUMB` finger-sized, default; `FINGER` is thinner) |
 | `Entry`, `TextView` | `get_text`/`set_text`; `Entry.set_completion(words)` is an `EntryCompletion` |
+| `DrawingArea` | an X window for a video sink (`xid()` for GStreamer XOverlay) or custom drawing |
 | `PannableArea` | kinetic scrolling (`add` for widgets that scroll by themselves, `add_viewport` for the others) |
 | `AppMenu`, `Banner` | the menu of the title bar, the grey information banner |
 | `ListStore`, `ListView` | a text list (`HildonTreeView`): `append`, `rows`, `clear`, `selected`, `activate` |
 | `Dialog`, `confirm`, `info` | dialogs, Hildon notes |
-| `timeout`, `idle`, `main`, `quit` | main loop and timers |
+| `timeout`, `idle`, `main`, `quit`, `flush` | main loop, timers, `flush()` handles pending events before a long blocking job |
 
 Signals: `widget.connect("clicked", fn)`; `fn` gets the widget object. An exception in a handler is printed and does not stop the main loop.
 Anything the layer does not cover can be called the same way through `hildonlite._fn("gtk" | "hil" | "gobj" | "glib", "c_function_name", restype, *argtypes)`.

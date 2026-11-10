@@ -3,7 +3,7 @@
 There are no PyGTK or PyGObject bindings of GTK 2 + Hildon for Python 3, so the libraries are called directly. This module hides the ctypes
 details (argument types, return types, callbacks that must not be garbage collected) behind a few classes:
 
-    Window, Box (VBox, HBox), Label, Button, Entry (with completion), TextView, PannableArea, AppMenu, Banner, ListStore + ListView
+    Window, Box (VBox, HBox), Label, Button, ImageButton, Entry (with completion), TextView, PannableArea, DrawingArea, AppMenu, Banner, ListStore + ListView
     (GtkTreeView), Dialog and the ready-made confirm()/info(), plus init(), main(), quit(), timeout(), idle().
 
 Example:
@@ -20,11 +20,11 @@ Example:
 Signals: widget.connect("clicked", callback); callback gets the widget object (like PyGTK, without user data).
 Everything is wrapped lazily, so importing the module on a machine without GTK 2 is fine; init() reports the failure.
 """
-import ctypes
+import ctypes, os
 from ctypes import c_void_p, c_int, c_uint, c_char_p, c_double
 
-__all__ = ["init", "main", "quit", "timeout", "idle", "Widget", "Window", "Box", "VBox", "HBox", "Label", "Button", "Entry",
-           "TextView", "PannableArea", "AppMenu", "Banner", "ListStore", "ListView", "Dialog", "confirm", "info", "OK", "CANCEL", "THUMB", "FINGER", "AUTO", "HORIZONTAL", "VERTICAL"]
+__all__ = ["init", "main", "quit", "flush", "timeout", "idle", "Widget", "Window", "Box", "VBox", "HBox", "Label", "Button", "ImageButton", "Entry",
+           "TextView", "PannableArea", "DrawingArea", "AppMenu", "Banner", "ListStore", "ListView", "Dialog", "confirm", "info", "OK", "CANCEL", "THUMB", "FINGER", "AUTO", "HORIZONTAL", "VERTICAL"]
 
 # HildonSizeType (hildon-gtk.h) and HildonButtonArrangement
 FINGER = 1 << 1                         # HILDON_SIZE_FINGER_HEIGHT
@@ -42,8 +42,8 @@ def _load():
         _gtk = ctypes.CDLL("libgtk-x11-2.0.so.0")
         _hil = ctypes.CDLL("libhildon-1.so.0")
         _gobj = ctypes.CDLL("libgobject-2.0.so.0")
-        _glib = ctypes.CDLL("libglib-2.0.so.0")
-        _ARGS["glib"] = _glib
+        _ARGS["glib"] = ctypes.CDLL("libglib-2.0.so.0")
+        _ARGS["gdk"] = ctypes.CDLL("libgdk-x11-2.0.so.0")
 
 
 def _fn(lib, name, restype=None, *argtypes):
@@ -52,7 +52,7 @@ def _fn(lib, name, restype=None, *argtypes):
     f = _ARGS.get(key)
     if f is None:
         _load()
-        f = getattr(_ARGS[lib] if lib == "glib" else {"gtk": _gtk, "hil": _hil, "gobj": _gobj}[lib], name)
+        f = getattr(_ARGS[lib] if lib in ("glib", "gdk") else {"gtk": _gtk, "hil": _hil, "gobj": _gobj}[lib], name)
         f.restype = restype
         f.argtypes = list(argtypes) if argtypes else None
         _ARGS[key] = f
@@ -77,6 +77,15 @@ def main():
 
 def quit():
     _fn("gtk", "gtk_main_quit")()
+
+
+def flush():
+    """Handle the pending events (redraws, taps) without entering main(): call it before a long blocking job so that the window shows "Saving..." first."""
+    pending, step = _fn("gtk", "gtk_events_pending", c_int), _fn("gtk", "gtk_main_iteration_do", c_int, c_int)
+    for _ in range(200):
+        if not pending():
+            break
+        step(0)
 
 
 _CB_IDLE = ctypes.CFUNCTYPE(c_int, c_void_p)
@@ -231,6 +240,23 @@ class Button(Widget):
         _fn("hil", "hildon_button_set_title", None, c_void_p, c_char_p)(self.ptr, _b(title))
 
 
+class ImageButton(Widget):
+    """A finger-sized button with a picture instead of text (PNG file); falls back to `label` when the file cannot be loaded.
+    width narrows it (Hildon buttons are as wide as the free space otherwise)."""
+
+    def __init__(self, path, on_clicked=None, size=THUMB, width=-1, label=""):
+        super().__init__(_fn("hil", "hildon_gtk_button_new", c_void_p, c_int)(size))
+        if os.path.exists(path):
+            image = _fn("gtk", "gtk_image_new_from_file", c_void_p, c_char_p)(_b(path))
+            _fn("gtk", "gtk_button_set_image", None, c_void_p, c_void_p)(self.ptr, image)
+        else:
+            _fn("gtk", "gtk_button_set_label", None, c_void_p, c_char_p)(self.ptr, _b(label or os.path.basename(path)))
+        if width > 0:
+            self.set_size_request(width, -1)
+        if on_clicked:
+            self.connect("clicked", on_clicked)
+
+
 class Entry(Widget):
     """Single-line text field (GtkEntry); signal "changed"."""
 
@@ -281,6 +307,21 @@ class TextView(Widget):
             return ctypes.string_at(r).decode("utf-8", "replace")
         finally:
             _fn("gobj", "g_free", None, c_void_p)(r)
+
+
+class DrawingArea(Widget):
+    """An empty widget that owns an X window: a place for a video sink (GStreamer xvimagesink / XOverlay) or for custom drawing.
+    xid() is the X window id (the widget is realized first), e.g. for gst_x_overlay_set_xwindow_id()."""
+
+    def __init__(self, width=-1, height=-1):
+        super().__init__(_fn("gtk", "gtk_drawing_area_new", c_void_p)())
+        self.set_size_request(width, height)
+        _fn("gtk", "gtk_widget_set_double_buffered", None, c_void_p, c_int)(self.ptr, 0)      # the video sink draws itself
+
+    def xid(self):
+        _fn("gtk", "gtk_widget_realize", None, c_void_p)(self.ptr)
+        win = _fn("gtk", "gtk_widget_get_window", c_void_p, c_void_p)(self.ptr)
+        return _fn("gdk", "gdk_x11_drawable_get_xid", ctypes.c_ulong, c_void_p)(win)
 
 
 class PannableArea(Widget):

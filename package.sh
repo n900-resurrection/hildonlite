@@ -7,7 +7,7 @@ PROJ=/project
 . "$PROJ/scripts/debpack.sh"
 
 PKG=python3-hildonlite
-VERSION="${VERSION:-0.1.0}"
+VERSION="${VERSION:-0.2.2}"
 STAGE="$PROJ/build/deb/stage-$PKG"
 HERE="$PROJ/apps/hildonlite"
 SP=opt/python3/lib/python3.11/site-packages
