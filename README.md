@@ -38,8 +38,9 @@ Anything the layer does not cover can be called the same way through `hildonlite
 On the phone (needs our Python 3.11, package `python3.11` from the apt repository of this project):
 ```
 apt-get install python3-hildonlite                     # the .deb of the project repository, installs into /opt/python3/.../site-packages
-python3 -m pip install git+https://github.com/n900-resurrection/hildonlite    # or with pip (pure Python, builds on the phone)
+python3 -m pip install git+https://github.com/n900-resurrection/hildonlite    # or with pip (pure Python, builds on the phone; needs git)
 ```
+The `/tmp` of the phone is a 1 MB tmpfs, which is too small for the pip build: `mkdir -p ~/tmp && TMPDIR=~/tmp python3 -m pip install ./hildonlite` (a local copy, note the `./`).
 Examples are in `examples/` (the .deb puts them to `/opt/python3/share/doc/python3-hildonlite/examples`). Run as user inside the Hildon session (`DISPLAY=:0`).
 
 ## Development and tests
