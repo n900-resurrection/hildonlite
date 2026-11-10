@@ -20,7 +20,7 @@ Example:
 Signals: widget.connect("clicked", callback); callback gets the widget object (like PyGTK, without user data).
 Everything is wrapped lazily, so importing the module on a machine without GTK 2 is fine; init() reports the failure.
 """
-import ctypes, os
+import ctypes, os, struct
 from ctypes import c_void_p, c_int, c_uint, c_char_p, c_double
 
 __all__ = ["init", "main", "quit", "flush", "timeout", "idle", "Widget", "Window", "Box", "VBox", "HBox", "Label", "Button", "ImageButton", "Entry",
@@ -123,6 +123,8 @@ def idle(func, *args):
 
 # a signal handler gets (instance, ...signal arguments..., user data); 4 pointer arguments cover every signal used here (extra ones are ignored)
 _CB_SIGNAL = ctypes.CFUNCTYPE(None, c_void_p, c_void_p, c_void_p, c_void_p)
+_CB_KEY = ctypes.CFUNCTYPE(c_int, c_void_p, c_void_p, c_void_p)           # key-press-event: gboolean handler(widget, GdkEventKey *, user data)
+_KEY_CONNECT = {}
 _by_ptr = {}   # address -> Widget, so that a signal handler gets the same Python object back
 
 
@@ -145,6 +147,28 @@ class Widget:
         self._cbs.append(cb)          # as long as the widget lives, the callback lives
         return _fn("gobj", "g_signal_connect_data", ctypes.c_ulong, c_void_p, c_char_p, _CB_SIGNAL, c_void_p, c_void_p, c_int)(
             self.ptr, _b(signal), cb, None, None, 0)
+
+    def on_key(self, callback, release=False):
+        """callback(keyval, state, hardware_keycode) for every key press (key release with release=True) that reaches this widget; return True to consume it.
+        Use it on a Window to see all keys of the application (keyval 0xff0d = Return, 0xff09 = Tab, 0xffe5 = Caps Lock)."""
+        def thunk(_w, event, _d):
+            try:
+                typ, = struct.unpack_from("<i", ctypes.string_at(event, 4))
+                state, keyval = struct.unpack_from("<II", ctypes.string_at(event + 16, 8))
+                hw, = struct.unpack_from("<H", ctypes.string_at(event + 32, 2))
+                return 1 if callback(keyval, state, hw) else 0
+            except Exception:
+                import traceback; traceback.print_exc()
+                return 0
+        cb = _CB_KEY(thunk)
+        self._cbs.append(cb)
+        connect = _KEY_CONNECT.get("f")                     # own function object: g_signal_connect_data has another callback type here than in connect()
+        if connect is None:
+            connect = ctypes.CDLL("libgobject-2.0.so.0").g_signal_connect_data
+            connect.restype = ctypes.c_ulong
+            connect.argtypes = [c_void_p, c_char_p, _CB_KEY, c_void_p, c_void_p, c_int]
+            _KEY_CONNECT["f"] = connect
+        return connect(self.ptr, b"key-release-event" if release else b"key-press-event", cb, None, None, 0)
 
     def show(self):
         _fn("gtk", "gtk_widget_show_all", None, c_void_p)(self.ptr)

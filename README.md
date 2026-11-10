@@ -28,6 +28,7 @@ hl.main()
 | `Entry`, `TextView` | `get_text`/`set_text`; `Entry.set_completion(words)` is an `EntryCompletion` |
 | `DrawingArea` | an X window for a video sink (`xid()` for GStreamer XOverlay) or custom drawing |
 | `PannableArea` | kinetic scrolling (`add` for widgets that scroll by themselves, `add_viewport` for the others) |
+| `Widget.on_key(fn)` | key presses reaching a widget: `fn(keyval, state, hardware_keycode)`, used by the keyboard test of DOC/bluetooth-keyboard.md |
 | `AppMenu`, `Banner` | the menu of the title bar, the grey information banner |
 | `ListStore`, `ListView` | a text list (`HildonTreeView`): `append`, `rows`, `clear`, `selected`, `activate` |
 | `Dialog`, `confirm`, `info` | dialogs, Hildon notes |
