@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hildonlite"
-version = "0.3.0"
+version = "0.4.0"
 description = "Thin ctypes layer over GTK 2 and Hildon (Maemo 5, Nokia N900) for Python 3: no PyGTK, no PyGObject"
 readme = "README.md"
 license = { text = "MIT" }

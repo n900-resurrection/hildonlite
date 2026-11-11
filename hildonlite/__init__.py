@@ -281,6 +281,65 @@ class ImageButton(Widget):
             self.connect("clicked", on_clicked)
 
 
+class Scale(Widget):
+    """Horizontal slider (GtkHScale) over a range; get_value()/set_value(); the callback gets the widget when the value changes."""
+
+    def __init__(self, low, high, step=1, value=None, on_changed=None, digits=0):
+        f = _fn("gtk", "gtk_hscale_new_with_range", c_void_p, ctypes.c_double, ctypes.c_double, ctypes.c_double)
+        super().__init__(f(low, high, step))
+        _fn("gtk", "gtk_scale_set_digits", None, c_void_p, c_int)(self.ptr, digits)
+        _fn("gtk", "gtk_range_set_increments", None, c_void_p, ctypes.c_double, ctypes.c_double)(self.ptr, step, step)    # a tap moves by one step, not by a page
+        if value is not None:
+            self.set_value(value)
+        if on_changed:
+            self.connect("value-changed", on_changed)
+
+    def get_value(self):
+        return _fn("gtk", "gtk_range_get_value", ctypes.c_double, c_void_p)(self.ptr)
+
+    def set_value(self, value):
+        _fn("gtk", "gtk_range_set_value", None, c_void_p, ctypes.c_double)(self.ptr, value)
+
+
+class PickerButton(Widget):
+    """HildonPickerButton: a button with a title that shows the chosen option and opens a list to choose from (a touch selector).
+    options is a list of strings; get_active() gives the index of the chosen one; the callback gets the widget when the choice changes."""
+
+    def __init__(self, title, options, active=0, on_changed=None, size=THUMB, arrangement=VERTICAL):
+        super().__init__(_fn("hil", "hildon_picker_button_new", c_void_p, c_int, c_int)(size, arrangement))
+        _fn("hil", "hildon_button_set_title", None, c_void_p, c_char_p)(self.ptr, _b(title))
+        self._sel = _fn("hil", "hildon_touch_selector_new_text", c_void_p)()
+        for option in options:
+            _fn("hil", "hildon_touch_selector_append_text", None, c_void_p, c_char_p)(self._sel, _b(option))
+        _fn("hil", "hildon_picker_button_set_selector", None, c_void_p, c_void_p)(self.ptr, self._sel)
+        self.set_active(active)
+        if on_changed:
+            self.connect("value-changed", on_changed)
+
+    def get_active(self):
+        return _fn("hil", "hildon_touch_selector_get_active", c_int, c_void_p, c_int)(self._sel, 0)
+
+    def set_active(self, index):
+        _fn("hil", "hildon_touch_selector_set_active", None, c_void_p, c_int, c_int)(self._sel, 0, index)
+
+
+class CheckButton(Widget):
+    """HildonCheckButton: a button with a title that toggles on and off; get_active()/set_active(); the callback gets the widget on "toggled"."""
+
+    def __init__(self, title="", active=False, on_toggled=None, size=THUMB):
+        super().__init__(_fn("hil", "hildon_check_button_new", c_void_p, c_int)(size))
+        _fn("gtk", "gtk_button_set_label", None, c_void_p, c_char_p)(self.ptr, _b(title))
+        self.set_active(active)
+        if on_toggled:
+            self.connect("toggled", on_toggled)
+
+    def get_active(self):
+        return bool(_fn("hil", "hildon_check_button_get_active", c_int, c_void_p)(self.ptr))
+
+    def set_active(self, active):
+        _fn("hil", "hildon_check_button_set_active", None, c_void_p, c_int)(self.ptr, int(bool(active)))
+
+
 class Entry(Widget):
     """Single-line text field (GtkEntry); signal "changed"."""
 

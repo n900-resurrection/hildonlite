@@ -25,6 +25,30 @@ def setUpModule():
 
 
 class Widgets(unittest.TestCase):
+    def test_scale_value_and_signal(self):
+        seen = []
+        s = hl.Scale(0, 10, 1, value=3, on_changed=lambda w: seen.append(w.get_value()))
+        self.assertEqual(s.get_value(), 3)
+        s.set_value(7)
+        self.assertEqual(s.get_value(), 7)
+        self.assertEqual(seen, [7])
+
+    def test_picker_button_choice_and_signal(self):
+        seen = []
+        p = hl.PickerButton("Layout", ["Czech", "US", "Raw"], active=1, on_changed=lambda w: seen.append(w.get_active()))
+        self.assertEqual(p.get_active(), 1)
+        p.set_active(2)
+        self.assertEqual(p.get_active(), 2)
+        self.assertEqual(seen, [2])
+
+    def test_check_button_toggle_and_signal(self):
+        seen = []
+        c = hl.CheckButton("Visible", active=True, on_toggled=lambda w: seen.append(w.get_active()))
+        self.assertTrue(c.get_active())
+        c.set_active(False)
+        self.assertFalse(c.get_active())
+        self.assertEqual(seen, [False])
+
     def test_entry_text(self):
         e = hl.Entry("abc")
         self.assertEqual(e.get_text(), "abc")
