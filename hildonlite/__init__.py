@@ -44,6 +44,7 @@ def _load():
         _gobj = ctypes.CDLL("libgobject-2.0.so.0")
         _ARGS["glib"] = ctypes.CDLL("libglib-2.0.so.0")
         _ARGS["gdk"] = ctypes.CDLL("libgdk-x11-2.0.so.0")
+        _ARGS["pix"] = ctypes.CDLL("libgdk_pixbuf-2.0.so.0")
 
 
 def _fn(lib, name, restype=None, *argtypes):
@@ -52,7 +53,7 @@ def _fn(lib, name, restype=None, *argtypes):
     f = _ARGS.get(key)
     if f is None:
         _load()
-        f = getattr(_ARGS[lib] if lib in ("glib", "gdk") else {"gtk": _gtk, "hil": _hil, "gobj": _gobj}[lib], name)
+        f = getattr(_ARGS[lib] if lib in ("glib", "gdk", "pix") else {"gtk": _gtk, "hil": _hil, "gobj": _gobj}[lib], name)
         f.restype = restype
         f.argtypes = list(argtypes) if argtypes else None
         _ARGS[key] = f
@@ -446,39 +447,75 @@ G_TYPE_STRING = 16 << 2
 
 
 class ListStore:
-    """GtkListStore with `columns` string columns (the model of a ListView or of an entry completion)."""
+    """GtkListStore with `columns` columns (the model of a ListView or of an entry completion). The columns are strings, except those named in
+    pixbuf_columns: they hold a picture (a GdkPixbuf, shown by the ListView). A picture is given as the path of an image file (png, jpeg ...) or None;
+    it is scaled to image_size (width, height), keeping the proportions."""
 
-    def __init__(self, columns=1):
+    def __init__(self, columns=1, pixbuf_columns=(), image_size=(96, 54)):
         self.columns = columns
-        types = (ctypes.c_size_t * columns)(*([G_TYPE_STRING] * columns))
+        self.pixbuf_columns = tuple(pixbuf_columns)
+        self.image_size = image_size
+        pix_type = _fn("pix", "gdk_pixbuf_get_type", ctypes.c_size_t)() if self.pixbuf_columns else 0
+        types = (ctypes.c_size_t * columns)(*[pix_type if c in self.pixbuf_columns else G_TYPE_STRING for c in range(columns)])
         self.ptr = c_void_p(_fn("gtk", "gtk_list_store_newv", c_void_p, c_int, c_void_p)(columns, types))
 
+    def _set(self, it, col, value):
+        # gtk_list_store_set() is variadic: no argtypes, explicit C types
+        f = _fn("gtk", "gtk_list_store_set")
+        if col in self.pixbuf_columns:
+            pix = self._load(value)
+            f(self.ptr, it, c_int(col), c_void_p(pix), c_int(-1))
+            if pix:
+                _fn("gobj", "g_object_unref", None, c_void_p)(pix)       # the store holds its own reference
+        else:
+            f(self.ptr, it, c_int(col), c_char_p(_b(value)), c_int(-1))
+
+    def _load(self, path):
+        """A GdkPixbuf (new reference) from an image file, or None when there is no such file or it cannot be read."""
+        if not path:
+            return None
+        err = c_void_p()
+        w, h = self.image_size
+        pix = _fn("pix", "gdk_pixbuf_new_from_file_at_scale", c_void_p, c_char_p, c_int, c_int, c_int, c_void_p)(_b(path), w, h, 1, ctypes.byref(err))
+        if not pix and err:
+            _fn("glib", "g_error_free", None, c_void_p)(err)
+        return pix or None
+
     def append(self, row):
-        """Add a row (a list of str, one per column)."""
+        """Add a row (a list: str for a text column, an image path or None for a picture column)."""
         it = ctypes.create_string_buffer(64)                 # GtkTreeIter
         _fn("gtk", "gtk_list_store_append", None, c_void_p, c_void_p)(self.ptr, it)
-        for col, text in enumerate(row):
-            # gtk_list_store_set() is variadic: no argtypes, explicit C types
-            f = _fn("gtk", "gtk_list_store_set")
-            f(self.ptr, it, c_int(col), c_char_p(_b(text)), c_int(-1))
+        for col, value in enumerate(row):
+            self._set(it, col, value)
+
+    def set_value(self, index, col, value):
+        """Change one cell of row number `index` (0 based): a text, or the path of an image for a picture column. False when there is no such row."""
+        it = ctypes.create_string_buffer(64)
+        if not _fn("gtk", "gtk_tree_model_iter_nth_child", c_int, c_void_p, c_void_p, c_void_p, c_int)(self.ptr, it, None, index):
+            return False
+        self._set(it, col, value)
+        return True
 
     def clear(self):
         _fn("gtk", "gtk_list_store_clear", None, c_void_p)(self.ptr)
 
     def rows(self):
-        """All rows as lists of str."""
+        """All rows as lists of str (a picture column gives "")."""
         out = []
         it = ctypes.create_string_buffer(64)
         ok = _fn("gtk", "gtk_tree_model_get_iter_first", c_int, c_void_p, c_void_p)(self.ptr, it)
         while ok:
-            out.append(_row(self.ptr, it, self.columns))
+            out.append(_row(self.ptr, it, self.columns, self.pixbuf_columns))
             ok = _fn("gtk", "gtk_tree_model_iter_next", c_int, c_void_p, c_void_p)(self.ptr, it)
         return out
 
 
-def _row(model, it, columns):
+def _row(model, it, columns, pixbuf_columns=()):
     row = []
     for col in range(columns):
+        if col in pixbuf_columns:
+            row.append("")
+            continue
         val = ctypes.create_string_buffer(32)                # zeroed GValue
         _fn("gtk", "gtk_tree_model_get_value", None, c_void_p, c_void_p, c_int, c_void_p)(model, it, col, val)
         s = _fn("gobj", "g_value_get_string", c_char_p, c_void_p)(val)
@@ -488,7 +525,7 @@ def _row(model, it, columns):
 
 
 class ListView(Widget):
-    """HildonTreeView over a ListStore: one text column per store column, no headers. Put it into a PannableArea (add, not add_viewport).
+    """HildonTreeView over a ListStore: one column per store column (text, or a picture for the pixbuf columns), no headers. Put it into a PannableArea (add, not add_viewport).
     Signals: connect("row-activated", fn) is a tap on a row; selected() returns the row under the cursor."""
 
     def __init__(self, store, headers=None):
@@ -496,10 +533,11 @@ class ListView(Widget):
         self.store = store
         _fn("gtk", "gtk_tree_view_set_model", None, c_void_p, c_void_p)(self.ptr, store.ptr)
         for col in range(store.columns):
-            r = _fn("gtk", "gtk_cell_renderer_text_new", c_void_p)()
+            pic = col in store.pixbuf_columns
+            r = _fn("gtk", "gtk_cell_renderer_pixbuf_new" if pic else "gtk_cell_renderer_text_new", c_void_p)()
             c = _fn("gtk", "gtk_tree_view_column_new", c_void_p)()
-            _fn("gtk", "gtk_tree_view_column_pack_start", None, c_void_p, c_void_p, c_int)(c, r, 1)
-            _fn("gtk", "gtk_tree_view_column_add_attribute", None, c_void_p, c_void_p, c_char_p, c_int)(c, r, b"text", col)
+            _fn("gtk", "gtk_tree_view_column_pack_start", None, c_void_p, c_void_p, c_int)(c, r, 0 if pic else 1)
+            _fn("gtk", "gtk_tree_view_column_add_attribute", None, c_void_p, c_void_p, c_char_p, c_int)(c, r, b"pixbuf" if pic else b"text", col)
             if headers:
                 _fn("gtk", "gtk_tree_view_column_set_title", None, c_void_p, c_char_p)(c, _b(headers[col]))
             _fn("gtk", "gtk_tree_view_append_column", c_int, c_void_p, c_void_p)(self.ptr, c)
@@ -529,7 +567,7 @@ class ListView(Widget):
         it = ctypes.create_string_buffer(64)
         model = c_void_p()
         if _fn("gtk", "gtk_tree_selection_get_selected", c_int, c_void_p, c_void_p, c_void_p)(self._selection(), ctypes.byref(model), it):
-            return _row(self.store.ptr, it, self.store.columns)
+            return _row(self.store.ptr, it, self.store.columns, self.store.pixbuf_columns)
         rows = self.store.rows()
         return rows[self._current] if self._current is not None and self._current < len(rows) else None
 

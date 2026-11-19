@@ -30,7 +30,7 @@ hl.main()
 | `PannableArea` | kinetic scrolling (`add` for widgets that scroll by themselves, `add_viewport` for the others) |
 | `Widget.on_key(fn)` | key presses reaching a widget: `fn(keyval, state, hardware_keycode)`, used by the keyboard test of DOC/bluetooth-keyboard.md |
 | `AppMenu`, `Banner` | the menu of the title bar, the grey information banner |
-| `ListStore`, `ListView` | a text list (`HildonTreeView`): `append`, `rows`, `clear`, `selected`, `activate` |
+| `ListStore`, `ListView` | a list (`HildonTreeView`) of text columns and picture columns (`ListStore(2, pixbuf_columns=(0,), image_size=(96, 54))`; a picture is the path of an image file): `append`, `set_value`, `rows`, `clear`, `selected`, `activate` |
 | `Dialog`, `confirm`, `info` | dialogs, Hildon notes |
 | `timeout`, `idle`, `main`, `quit`, `flush` | main loop, timers, `flush()` handles pending events before a long blocking job |
 

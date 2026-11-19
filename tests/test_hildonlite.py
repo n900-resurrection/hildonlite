@@ -151,6 +151,69 @@ class Lists(unittest.TestCase):
         self.assertIsNone(self.view.selected())
 
 
+def write_png(path, width=8, height=4, rgb=(200, 30, 30)):
+    """A small PNG file (no imaging library needed)."""
+    import struct, zlib
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xffffffff)
+    raw = b"".join(b"\x00" + bytes(rgb) * width for _ in range(height))
+    with open(path, "wb") as f:
+        f.write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
+class Pictures(unittest.TestCase):
+    """A picture column in a ListStore (the thumbnails of a list of videos)."""
+
+    def setUp(self):
+        import tempfile
+        self.dir = tempfile.mkdtemp()
+        self.png = os.path.join(self.dir, "a.png")
+        write_png(self.png)
+        self.store = hl.ListStore(2, pixbuf_columns=(0,), image_size=(32, 18))
+        self.view = hl.ListView(self.store)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_rows_with_a_picture_column(self):
+        self.store.append([self.png, "first"])
+        self.store.append([None, "second"])                      # no picture (yet)
+        self.assertEqual(self.store.rows(), [["", "first"], ["", "second"]])
+
+    def test_a_missing_or_broken_file_is_not_fatal(self):
+        self.store.append([os.path.join(self.dir, "none.png"), "x"])
+        broken = os.path.join(self.dir, "b.png")
+        open(broken, "wb").write(b"not an image")
+        self.store.append([broken, "y"])
+        self.assertEqual([r[1] for r in self.store.rows()], ["x", "y"])
+
+    def test_set_value_changes_a_cell(self):
+        self.store.append([None, "first"])
+        self.assertTrue(self.store.set_value(0, 0, self.png))
+        self.assertTrue(self.store.set_value(0, 1, "renamed"))
+        self.assertFalse(self.store.set_value(3, 0, self.png))   # no such row
+        self.assertEqual(self.store.rows(), [["", "renamed"]])
+
+    def test_selected_row_and_tap(self):
+        self.store.append([self.png, "first"])
+        got = []
+        self.view.connect("row-activated", lambda w: got.append(w.selected()))
+        self.view.activate(0)
+        self.assertEqual(got, [["", "first"]])
+
+    def test_the_view_can_be_shown(self):
+        for i in range(5):
+            self.store.append([self.png, "row %d" % i])
+        w = hl.Window("pics", quit_on_close=False)
+        pa = hl.PannableArea()
+        pa.add(self.view)
+        w.add(pa)
+        w.show()
+        pump(80)
+        w.destroy()
+
+
 class Dialogs(unittest.TestCase):
     def respond_later(self, dialog, response, ms=200):
         f = hl._fn("gtk", "gtk_dialog_response", None, ctypes.c_void_p, ctypes.c_int)
